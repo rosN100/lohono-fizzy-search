@@ -56,6 +56,16 @@ class DateParserService:
             except ValueError:
                 pass
         
+        # Additional check: if it looks like YYYY-MM-DD, don't use dateparser
+        if len(date_input) == 10 and date_input.count('-') == 2:
+            try:
+                # Force parse as YYYY-MM-DD
+                parsed = datetime.strptime(date_input, "%Y-%m-%d")
+                logger.info(f"Date '{date_input}' forced as ISO format, returning as-is")
+                return date_input
+            except ValueError:
+                pass
+        
         # Try parsing with dateparser (handles natural language)
         try:
             parsed_date = dateparser.parse(

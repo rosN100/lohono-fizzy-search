@@ -160,12 +160,22 @@ class PropertySearchService:
         for prop_name in matched_properties:
             if prop_name in property_map:
                 prop_data = property_map[prop_name]
+                # Handle None or invalid price values
+                try:
+                    price_value = int(prop_data["listing price"]) if prop_data["listing price"] is not None else None
+                except (ValueError, TypeError):
+                    price_value = None
+                
                 properties_list.append({
                     "name": prop_name,
-                    "price": int(prop_data["listing price"]),
+                    "price": price_value,
                     "status": prop_data["status"]
                 })
-                prices.append(int(prop_data["listing price"]))
+                
+                # Only add to prices list if price is valid
+                if price_value is not None:
+                    prices.append(price_value)
+                    
                 if prop_data["status"] == "available":
                     available_count += 1
             else:
