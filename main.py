@@ -65,6 +65,8 @@ async def vapi_webhook(request: Request):
         # Parse the raw request body
         request_data = await request.json()
         logger.info(f"Received raw webhook request: {request_data}")
+        logger.info(f"Request data type: {type(request_data)}")
+        logger.info(f"Request data keys: {list(request_data.keys()) if isinstance(request_data, dict) else 'Not a dict'}")
         
         # Handle different possible request formats from Vapi
         if "toolCall" in request_data:
@@ -142,19 +144,31 @@ async def vapi_webhook(request: Request):
         return error_handler.generic_error_response(tool_call_id, str(e))
 
 @app.post("/api/v1/webhook/vapi-debug")
-async def vapi_webhook_debug(request: dict):
+async def vapi_webhook_debug(request: Request):
     """
     Debug endpoint to see exactly what Vapi is sending
     """
-    logger.info(f"DEBUG: Raw request body: {request}")
-    logger.info(f"DEBUG: Request type: {type(request)}")
-    logger.info(f"DEBUG: Request keys: {list(request.keys()) if isinstance(request, dict) else 'Not a dict'}")
-    
-    return {
-        "debug": "Request logged",
-        "received_keys": list(request.keys()) if isinstance(request, dict) else "Not a dict",
-        "request_type": str(type(request))
-    }
+    try:
+        # Get raw body
+        raw_body = await request.body()
+        logger.info(f"DEBUG: Raw body: {raw_body}")
+        
+        # Parse JSON
+        request_data = await request.json()
+        logger.info(f"DEBUG: Parsed JSON: {request_data}")
+        logger.info(f"DEBUG: Request type: {type(request_data)}")
+        logger.info(f"DEBUG: Request keys: {list(request_data.keys()) if isinstance(request_data, dict) else 'Not a dict'}")
+        
+        return {
+            "debug": "Request logged",
+            "raw_body": raw_body.decode('utf-8'),
+            "parsed_json": request_data,
+            "received_keys": list(request_data.keys()) if isinstance(request_data, dict) else "Not a dict",
+            "request_type": str(type(request_data))
+        }
+    except Exception as e:
+        logger.error(f"DEBUG ERROR: {e}")
+        return {"error": str(e)}
 
 @app.post("/api/v1/webhook/vapi-simple")
 async def vapi_webhook_simple(request: VapiWebhookRequest):
