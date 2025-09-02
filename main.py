@@ -57,17 +57,32 @@ async def debug_date(date_input: str):
         return {"error": str(e), "input": date_input}
 
 @app.post("/api/v1/webhook/vapi")
-async def vapi_webhook(request: VapiWebhookRequest):
+async def vapi_webhook(request: dict):
     """
     Main webhook endpoint for Vapi voice agent integration
     """
     try:
-        logger.info(f"Received webhook request: {request}")
+        logger.info(f"Received raw webhook request: {request}")
         
-        # Extract parameters
-        tool_call_id = request.toolCallId
-        property_name = request.parameters.property_name
-        check_date_input = request.parameters.check_date
+        # Handle different possible request formats from Vapi
+        if "toolCallId" in request:
+            # Our expected format
+            tool_call_id = request["toolCallId"]
+            property_name = request["parameters"]["property_name"]
+            check_date_input = request["parameters"]["check_date"]
+        elif "toolCall" in request:
+            # Alternative Vapi format
+            tool_call_id = request["toolCall"]["id"]
+            function_args = request["toolCall"]["function"]["arguments"]
+            if isinstance(function_args, str):
+                import json
+                function_args = json.loads(function_args)
+            property_name = function_args["property_name"]
+            check_date_input = function_args["check_date"]
+        else:
+            # Try to extract from any format
+            logger.error(f"Unknown request format: {request}")
+            return {"error": "Unknown request format"}
         
         # Parse the date (handles natural language)
         try:
@@ -114,6 +129,21 @@ async def vapi_webhook(request: VapiWebhookRequest):
     except Exception as e:
         logger.error(f"Webhook processing error: {e}")
         return error_handler.generic_error_response(request.toolCallId, str(e))
+
+@app.post("/api/v1/webhook/vapi-debug")
+async def vapi_webhook_debug(request: dict):
+    """
+    Debug endpoint to see exactly what Vapi is sending
+    """
+    logger.info(f"DEBUG: Raw request body: {request}")
+    logger.info(f"DEBUG: Request type: {type(request)}")
+    logger.info(f"DEBUG: Request keys: {list(request.keys()) if isinstance(request, dict) else 'Not a dict'}")
+    
+    return {
+        "debug": "Request logged",
+        "received_keys": list(request.keys()) if isinstance(request, dict) else "Not a dict",
+        "request_type": str(type(request))
+    }
 
 @app.post("/api/v1/webhook/vapi-simple")
 async def vapi_webhook_simple(request: VapiWebhookRequest):
