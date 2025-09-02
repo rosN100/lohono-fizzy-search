@@ -1,0 +1,37 @@
+from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
+
+class VapiParameters(BaseModel):
+    property_name: str
+    check_date: str
+
+class VapiWebhookRequest(BaseModel):
+    toolCallId: str
+    parameters: VapiParameters
+
+class PropertyResult(BaseModel):
+    name: str
+    price: Optional[int]
+    status: str
+
+class PriceRange(BaseModel):
+    min: int
+    max: int
+
+class SearchResult(BaseModel):
+    found: bool
+    search_term: str
+    check_date: str
+    total_found: int
+    available_count: int
+    properties: List[PropertyResult]
+    price_range: Optional[PriceRange] = None
+    summary: str
+    message: Optional[str] = None
+
+class VapiWebhookResult(BaseModel):
+    toolCallId: str
+    result: SearchResult
+
+class VapiWebhookResponse(BaseModel):
+    results: List[VapiWebhookResult]
