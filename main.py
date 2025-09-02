@@ -100,10 +100,54 @@ async def vapi_webhook(request: Request):
             check_date_input = function_args["check_date"]
             logger.info(f"Using message.toolCallList format - ID: {tool_call_id}")
         else:
-            # Try to extract from any format
-            logger.error(f"Unknown request format: {request_data}")
-            logger.error(f"Available keys: {list(request_data.keys()) if isinstance(request_data, dict) else 'Not a dict'}")
-            return {"error": "Unknown request format"}
+            # Try to extract from any format - be very flexible
+            logger.warning(f"Unknown request format, attempting flexible extraction: {request_data}")
+            logger.warning(f"Available keys: {list(request_data.keys()) if isinstance(request_data, dict) else 'Not a dict'}")
+            
+            # Try to find toolCallId anywhere in the structure
+            def find_tool_call_id(data, path=""):
+                if isinstance(data, dict):
+                    for key, value in data.items():
+                        if key == "id" and isinstance(value, str) and value.startswith("call_"):
+                            return value, path + f".{key}"
+                        elif isinstance(value, (dict, list)):
+                            result = find_tool_call_id(value, path + f".{key}")
+                            if result[0]:
+                                return result
+                elif isinstance(data, list):
+                    for i, item in enumerate(data):
+                        result = find_tool_call_id(item, path + f"[{i}]")
+                        if result[0]:
+                            return result
+                return None, ""
+            
+            # Try to find property_name and check_date anywhere
+            def find_parameters(data, path=""):
+                params = {}
+                if isinstance(data, dict):
+                    for key, value in data.items():
+                        if key in ["property_name", "check_date"]:
+                            params[key] = value
+                        elif isinstance(value, (dict, list)):
+                            sub_params = find_parameters(value, path + f".{key}")
+                            params.update(sub_params)
+                elif isinstance(data, list):
+                    for i, item in enumerate(data):
+                        sub_params = find_parameters(item, path + f"[{i}]")
+                        params.update(sub_params)
+                return params
+            
+            # Try flexible extraction
+            tool_call_id, id_path = find_tool_call_id(request_data)
+            params = find_parameters(request_data)
+            
+            if tool_call_id and "property_name" in params and "check_date" in params:
+                property_name = params["property_name"]
+                check_date_input = params["check_date"]
+                logger.info(f"Flexible extraction successful - ID: {tool_call_id} at {id_path}")
+            else:
+                logger.error(f"Flexible extraction failed - toolCallId: {tool_call_id}, params: {params}")
+                return {"error": "Unknown request format - could not extract required fields"}
         
         if not tool_call_id or not property_name or not check_date_input:
             logger.error(f"Missing required fields - toolCallId: {tool_call_id}, property_name: {property_name}, check_date: {check_date_input}")
