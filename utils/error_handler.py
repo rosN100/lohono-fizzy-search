@@ -6,32 +6,41 @@ class ErrorHandler:
     Centralized error handling for webhook responses
     """
     
-    def invalid_date_response(self, tool_call_id: str, invalid_date: str) -> VapiWebhookResponse:
+    def invalid_date_response(self, tool_call_id: str, invalid_date: str) -> dict:
         """
         Generate response for invalid date format
         """
         error_message = f"Invalid date format: {invalid_date}. Please use formats like '2025-09-09', '9th Sept 2025', or 'September 9'."
         
-        return VapiWebhookResponse(
-            results=[VapiWebhookResult(toolCallId=tool_call_id, result=error_message)]
-        )
+        return {
+            "results": [{
+                "toolCallId": tool_call_id,
+                "result": error_message
+            }]
+        }
     
-    def search_error_response(self, tool_call_id: str, error_message: str) -> VapiWebhookResponse:
+    def search_error_response(self, tool_call_id: str, error_message: str) -> dict:
         """
         Generate response for search errors
         """
         error_msg = f"Search error: {error_message}"
         
-        return VapiWebhookResponse(
-            results=[VapiWebhookResult(toolCallId=tool_call_id, result=error_msg)]
-        )
+        return {
+            "results": [{
+                "toolCallId": tool_call_id,
+                "result": error_msg
+            }]
+        }
     
-    def generic_error_response(self, tool_call_id: str, error_message: str) -> VapiWebhookResponse:
+    def generic_error_response(self, tool_call_id: str, error_message: str) -> dict:
         """
         Generate response for generic errors
         """
         error_msg = f"Error processing request: {error_message}"
         
-        return VapiWebhookResponse(
-            results=[VapiWebhookResult(toolCallId=tool_call_id, result=error_msg)]
-        )
+        return {
+            "results": [{
+                "toolCallId": tool_call_id,
+                "result": error_msg
+            }]
+        }
