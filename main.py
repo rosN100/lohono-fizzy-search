@@ -127,7 +127,14 @@ async def vapi_webhook(request: dict):
             
     except Exception as e:
         logger.error(f"Webhook processing error: {e}")
-        return error_handler.generic_error_response(request.toolCallId, str(e))
+        # Try to get toolCallId from request if possible
+        tool_call_id = "unknown"
+        if isinstance(request, dict):
+            if "toolCallId" in request:
+                tool_call_id = request["toolCallId"]
+            elif "toolCall" in request and "id" in request["toolCall"]:
+                tool_call_id = request["toolCall"]["id"]
+        return error_handler.generic_error_response(tool_call_id, str(e))
 
 @app.post("/api/v1/webhook/vapi-debug")
 async def vapi_webhook_debug(request: dict):
