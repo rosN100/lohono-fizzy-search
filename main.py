@@ -65,19 +65,19 @@ async def vapi_webhook(request: dict):
         logger.info(f"Received raw webhook request: {request}")
         
         # Handle different possible request formats from Vapi
-        if "toolCallId" in request:
-            # Our expected format
-            tool_call_id = request["toolCallId"]
-            property_name = request["parameters"]["property_name"]
-            check_date_input = request["parameters"]["check_date"]
-        elif "toolCall" in request:
-            # Alternative Vapi format
+        if "toolCall" in request:
+            # Vapi format (most common)
             tool_call_id = request["toolCall"]["id"]
             function_args = request["toolCall"]["function"]["arguments"]
             if isinstance(function_args, str):
                 function_args = json_module.loads(function_args)
             property_name = function_args["property_name"]
             check_date_input = function_args["check_date"]
+        elif "toolCallId" in request:
+            # Our expected format (fallback)
+            tool_call_id = request["toolCallId"]
+            property_name = request["parameters"]["property_name"]
+            check_date_input = request["parameters"]["check_date"]
         else:
             # Try to extract from any format
             logger.error(f"Unknown request format: {request}")
