@@ -75,7 +75,6 @@ async def vapi_webhook(request: dict):
             tool_call_id = request["toolCall"]["id"]
             function_args = request["toolCall"]["function"]["arguments"]
             if isinstance(function_args, str):
-                import json
                 function_args = json.loads(function_args)
             property_name = function_args["property_name"]
             check_date_input = function_args["check_date"]
