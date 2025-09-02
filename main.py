@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import logging
+import json
 from datetime import datetime
 
 from services.property_search import PropertySearchService
@@ -55,7 +56,7 @@ async def debug_date(date_input: str):
     except Exception as e:
         return {"error": str(e), "input": date_input}
 
-@app.post("/api/v1/webhook/vapi", response_model=VapiWebhookResponse)
+@app.post("/api/v1/webhook/vapi")
 async def vapi_webhook(request: VapiWebhookRequest):
     """
     Main webhook endpoint for Vapi voice agent integration
@@ -95,7 +96,16 @@ async def vapi_webhook(request: VapiWebhookRequest):
             
             logger.info(f"Returning response for toolCallId: {tool_call_id}")
             logger.info(f"Response structure: {type(response)}")
-            return response
+            
+            # Return with explicit headers for Vapi
+            return Response(
+                content=json.dumps(response),
+                media_type="application/json",
+                headers={
+                    "Content-Type": "application/json",
+                    "Cache-Control": "no-cache"
+                }
+            )
             
         except Exception as e:
             logger.error(f"Search error: {e}")
