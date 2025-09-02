@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -57,30 +57,32 @@ async def debug_date(date_input: str):
         return {"error": str(e), "input": date_input}
 
 @app.post("/api/v1/webhook/vapi")
-async def vapi_webhook(request: dict):
+async def vapi_webhook(request: Request):
     """
     Main webhook endpoint for Vapi voice agent integration
     """
     try:
-        logger.info(f"Received raw webhook request: {request}")
+        # Parse the raw request body
+        request_data = await request.json()
+        logger.info(f"Received raw webhook request: {request_data}")
         
         # Handle different possible request formats from Vapi
-        if "toolCall" in request:
+        if "toolCall" in request_data:
             # Vapi format (most common)
-            tool_call_id = request["toolCall"]["id"]
-            function_args = request["toolCall"]["function"]["arguments"]
+            tool_call_id = request_data["toolCall"]["id"]
+            function_args = request_data["toolCall"]["function"]["arguments"]
             if isinstance(function_args, str):
                 function_args = json_module.loads(function_args)
             property_name = function_args["property_name"]
             check_date_input = function_args["check_date"]
-        elif "toolCallId" in request:
+        elif "toolCallId" in request_data:
             # Our expected format (fallback)
-            tool_call_id = request["toolCallId"]
-            property_name = request["parameters"]["property_name"]
-            check_date_input = request["parameters"]["check_date"]
+            tool_call_id = request_data["toolCallId"]
+            property_name = request_data["parameters"]["property_name"]
+            check_date_input = request_data["parameters"]["check_date"]
         else:
             # Try to extract from any format
-            logger.error(f"Unknown request format: {request}")
+            logger.error(f"Unknown request format: {request_data}")
             return {"error": "Unknown request format"}
         
         # Parse the date (handles natural language)
@@ -100,7 +102,6 @@ async def vapi_webhook(request: dict):
             logger.info(f"Search completed: {search_results['total_found']} properties found")
             
             # Format response for Vapi (result must be a string according to Vapi docs)
-            # Try a simpler response format that Vapi might handle better
             response = {
                 "results": [{
                     "toolCallId": tool_call_id,
@@ -129,11 +130,15 @@ async def vapi_webhook(request: dict):
         logger.error(f"Webhook processing error: {e}")
         # Try to get toolCallId from request if possible
         tool_call_id = "unknown"
-        if isinstance(request, dict):
-            if "toolCallId" in request:
-                tool_call_id = request["toolCallId"]
-            elif "toolCall" in request and "id" in request["toolCall"]:
-                tool_call_id = request["toolCall"]["id"]
+        try:
+            request_data = await request.json()
+            if isinstance(request_data, dict):
+                if "toolCallId" in request_data:
+                    tool_call_id = request_data["toolCallId"]
+                elif "toolCall" in request_data and "id" in request_data["toolCall"]:
+                    tool_call_id = request_data["toolCall"]["id"]
+        except:
+            pass
         return error_handler.generic_error_response(tool_call_id, str(e))
 
 @app.post("/api/v1/webhook/vapi-debug")
