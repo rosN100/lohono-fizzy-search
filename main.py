@@ -69,6 +69,11 @@ async def vapi_webhook(request: Request):
         logger.info(f"Request data keys: {list(request_data.keys()) if isinstance(request_data, dict) else 'Not a dict'}")
         
         # Handle different possible request formats from Vapi
+        tool_call_id = None
+        property_name = None
+        check_date_input = None
+        
+        # Try multiple possible formats
         if "toolCall" in request_data:
             # Vapi format (most common)
             tool_call_id = request_data["toolCall"]["id"]
@@ -77,15 +82,32 @@ async def vapi_webhook(request: Request):
                 function_args = json_module.loads(function_args)
             property_name = function_args["property_name"]
             check_date_input = function_args["check_date"]
+            logger.info(f"Using toolCall format - ID: {tool_call_id}")
         elif "toolCallId" in request_data:
             # Our expected format (fallback)
             tool_call_id = request_data["toolCallId"]
             property_name = request_data["parameters"]["property_name"]
             check_date_input = request_data["parameters"]["check_date"]
+            logger.info(f"Using toolCallId format - ID: {tool_call_id}")
+        elif "message" in request_data and "toolCallList" in request_data["message"]:
+            # Alternative Vapi format
+            tool_call = request_data["message"]["toolCallList"][0]
+            tool_call_id = tool_call["id"]
+            function_args = tool_call["arguments"]
+            if isinstance(function_args, str):
+                function_args = json_module.loads(function_args)
+            property_name = function_args["property_name"]
+            check_date_input = function_args["check_date"]
+            logger.info(f"Using message.toolCallList format - ID: {tool_call_id}")
         else:
             # Try to extract from any format
             logger.error(f"Unknown request format: {request_data}")
+            logger.error(f"Available keys: {list(request_data.keys()) if isinstance(request_data, dict) else 'Not a dict'}")
             return {"error": "Unknown request format"}
+        
+        if not tool_call_id or not property_name or not check_date_input:
+            logger.error(f"Missing required fields - toolCallId: {tool_call_id}, property_name: {property_name}, check_date: {check_date_input}")
+            return {"error": "Missing required fields"}
         
         # Parse the date (handles natural language)
         try:
