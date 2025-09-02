@@ -93,7 +93,7 @@ async def vapi_webhook(request: Request):
             # Alternative Vapi format
             tool_call = request_data["message"]["toolCallList"][0]
             tool_call_id = tool_call["id"]
-            function_args = tool_call["arguments"]
+            function_args = tool_call["function"]["arguments"]
             if isinstance(function_args, str):
                 function_args = json_module.loads(function_args)
             property_name = function_args["property_name"]
