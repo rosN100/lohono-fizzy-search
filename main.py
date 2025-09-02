@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import logging
-import json
+import json as json_module
 from datetime import datetime
 
 from services.property_search import PropertySearchService
@@ -75,7 +75,7 @@ async def vapi_webhook(request: dict):
             tool_call_id = request["toolCall"]["id"]
             function_args = request["toolCall"]["function"]["arguments"]
             if isinstance(function_args, str):
-                function_args = json.loads(function_args)
+                function_args = json_module.loads(function_args)
             property_name = function_args["property_name"]
             check_date_input = function_args["check_date"]
         else:
@@ -113,7 +113,7 @@ async def vapi_webhook(request: dict):
             
             # Return with explicit headers for Vapi
             return Response(
-                content=json.dumps(response),
+                content=json_module.dumps(response),
                 media_type="application/json",
                 headers={
                     "Content-Type": "application/json",
