@@ -90,12 +90,11 @@ async def vapi_webhook(request: Request):
             check_date_input = request_data["parameters"]["check_date"]
             logger.info(f"Using toolCallId format - ID: {tool_call_id}")
         elif "message" in request_data and "toolCallList" in request_data["message"]:
-            # Alternative Vapi format
+            # Alternative Vapi format - this is the actual format Vapi is sending
             tool_call = request_data["message"]["toolCallList"][0]
             tool_call_id = tool_call["id"]
             function_args = tool_call["function"]["arguments"]
-            if isinstance(function_args, str):
-                function_args = json_module.loads(function_args)
+            # Arguments is already a dict, not a JSON string
             property_name = function_args["property_name"]
             check_date_input = function_args["check_date"]
             logger.info(f"Using message.toolCallList format - ID: {tool_call_id}")
