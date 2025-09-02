@@ -31,7 +31,7 @@ class SearchResult(BaseModel):
 
 class VapiWebhookResult(BaseModel):
     toolCallId: str
-    result: SearchResult
+    result: str  # Vapi expects result to be a string according to their docs
 
 class VapiWebhookResponse(BaseModel):
     results: List[VapiWebhookResult]

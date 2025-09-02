@@ -84,11 +84,11 @@ async def vapi_webhook(request: VapiWebhookRequest):
             )
             logger.info(f"Search completed: {search_results['total_found']} properties found")
             
-            # Format response for Vapi
+            # Format response for Vapi (result must be a string according to Vapi docs)
             response = VapiWebhookResponse(
                 results=[{
                     "toolCallId": tool_call_id,
-                    "result": search_results
+                    "result": search_results['summary']  # Return summary as string
                 }]
             )
             
