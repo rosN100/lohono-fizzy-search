@@ -84,7 +84,7 @@ async def vapi_webhook(request: VapiWebhookRequest):
             )
             logger.info(f"Search completed: {search_results['total_found']} properties found")
             
-            # Format response
+            # Format response for Vapi
             response = VapiWebhookResponse(
                 results=[{
                     "toolCallId": tool_call_id,
@@ -92,6 +92,8 @@ async def vapi_webhook(request: VapiWebhookRequest):
                 }]
             )
             
+            logger.info(f"Returning response for toolCallId: {tool_call_id}")
+            logger.info(f"Response structure: {type(response)}")
             return response
             
         except Exception as e:
@@ -101,6 +103,56 @@ async def vapi_webhook(request: VapiWebhookRequest):
     except Exception as e:
         logger.error(f"Webhook processing error: {e}")
         return error_handler.generic_error_response(request.toolCallId, str(e))
+
+@app.post("/api/v1/webhook/vapi-simple")
+async def vapi_webhook_simple(request: VapiWebhookRequest):
+    """
+    Alternative webhook endpoint with simpler response format for Vapi
+    """
+    try:
+        logger.info(f"Received simple webhook request: {request}")
+        
+        # Extract parameters
+        tool_call_id = request.toolCallId
+        property_name = request.parameters.property_name
+        check_date_input = request.parameters.check_date
+        
+        # Parse the date (handles natural language)
+        try:
+            check_date = date_parser_service.parse_date(check_date_input)
+            logger.info(f"Parsed date '{check_date_input}' to '{check_date}'")
+        except Exception as e:
+            logger.error(f"Date parsing error: {e}")
+            return {"error": f"Invalid date format: {check_date_input}"}
+        
+        # Perform fuzzy search
+        try:
+            search_results = property_search_service.search_properties(
+                property_name=property_name,
+                check_date=check_date
+            )
+            logger.info(f"Search completed: {search_results['total_found']} properties found")
+            
+            # Return simple response format
+            return {
+                "toolCallId": tool_call_id,
+                "found": search_results['found'],
+                "search_term": search_results['search_term'],
+                "check_date": search_results['check_date'],
+                "total_found": search_results['total_found'],
+                "available_count": search_results['available_count'],
+                "properties": search_results['properties'],
+                "price_range": search_results['price_range'],
+                "summary": search_results['summary']
+            }
+            
+        except Exception as e:
+            logger.error(f"Search error: {e}")
+            return {"error": f"Search failed: {str(e)}"}
+            
+    except Exception as e:
+        logger.error(f"Webhook processing error: {e}")
+        return {"error": f"Processing failed: {str(e)}"}
 
 @app.get("/api/v1/properties/search")
 async def search_properties(
