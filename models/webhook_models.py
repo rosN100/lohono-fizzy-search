@@ -37,3 +37,20 @@ class VapiWebhookResult(BaseModel):
 
 class VapiWebhookResponse(BaseModel):
     results: List[VapiWebhookResult]
+
+class OmniDimRequest(BaseModel):
+    property_name: str
+    check_in_date: str
+    check_out_date: str
+
+class OmniDimResponse(BaseModel):
+    found: bool
+    search_term: str
+    check_in_date: str
+    check_out_date: str
+    total_found: int
+    available_count: int
+    properties: List[PropertyResult]
+    price_range: Optional[PriceRange] = None
+    summary: str
+    message: Optional[str] = None

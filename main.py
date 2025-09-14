@@ -8,7 +8,7 @@ from datetime import datetime
 
 from services.property_search import PropertySearchService
 from services.date_parser import DateParserService
-from models.webhook_models import VapiWebhookRequest, VapiWebhookResponse
+from models.webhook_models import VapiWebhookRequest, VapiWebhookResponse, OmniDimRequest, OmniDimResponse
 from utils.error_handler import ErrorHandler
 
 # Configure logging
@@ -294,6 +294,59 @@ async def vapi_webhook_simple(request: VapiWebhookRequest):
             
     except Exception as e:
         logger.error(f"Webhook processing error: {e}")
+        return {"error": f"Processing failed: {str(e)}"}
+
+@app.post("/api/v1/webhook/omnidim")
+async def omnidim_webhook(request: OmniDimRequest):
+    """
+    Webhook endpoint specifically for OmniDim integration
+    Accepts direct parameters without wrapper structure
+    """
+    try:
+        logger.info(f"Received OmniDim webhook request: {request}")
+        
+        # Extract parameters directly
+        property_name = request.property_name
+        check_in_date_input = request.check_in_date
+        check_out_date_input = request.check_out_date
+        
+        # Parse the dates (handles natural language)
+        try:
+            check_in_date = date_parser_service.parse_date(check_in_date_input)
+            check_out_date = date_parser_service.parse_date(check_out_date_input)
+            logger.info(f"Parsed dates '{check_in_date_input}' to '{check_in_date}' and '{check_out_date_input}' to '{check_out_date}'")
+        except Exception as e:
+            logger.error(f"Date parsing error: {e}")
+            return {"error": f"Invalid date format: {check_in_date_input} - {check_out_date_input}"}
+        
+        # Perform fuzzy search
+        try:
+            search_results = property_search_service.search_properties(
+                property_name=property_name,
+                check_in_date=check_in_date,
+                check_out_date=check_out_date
+            )
+            logger.info(f"Search completed: {search_results['total_found']} properties found")
+            
+            # Return OmniDim compatible response format
+            return {
+                "found": search_results['found'],
+                "search_term": search_results['search_term'],
+                "check_in_date": search_results['check_in_date'],
+                "check_out_date": search_results['check_out_date'],
+                "total_found": search_results['total_found'],
+                "available_count": search_results['available_count'],
+                "properties": search_results['properties'],
+                "price_range": search_results['price_range'],
+                "summary": search_results['summary']
+            }
+            
+        except Exception as e:
+            logger.error(f"Search error: {e}")
+            return {"error": f"Search failed: {str(e)}"}
+            
+    except Exception as e:
+        logger.error(f"OmniDim webhook processing error: {e}")
         return {"error": f"Processing failed: {str(e)}"}
 
 @app.get("/api/v1/properties/search")
