@@ -3,7 +3,8 @@ from typing import List, Dict, Any, Optional
 
 class VapiParameters(BaseModel):
     property_name: str
-    check_date: str
+    check_in_date: str
+    check_out_date: str
 
 class VapiWebhookRequest(BaseModel):
     toolCallId: str
@@ -11,8 +12,8 @@ class VapiWebhookRequest(BaseModel):
 
 class PropertyResult(BaseModel):
     name: str
-    price: Optional[int]
-    status: str
+    availability: str
+    per_night_price: Optional[int]
 
 class PriceRange(BaseModel):
     min: int
@@ -21,7 +22,8 @@ class PriceRange(BaseModel):
 class SearchResult(BaseModel):
     found: bool
     search_term: str
-    check_date: str
+    check_in_date: str
+    check_out_date: str
     total_found: int
     available_count: int
     properties: List[PropertyResult]

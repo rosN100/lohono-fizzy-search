@@ -71,7 +71,8 @@ async def vapi_webhook(request: Request):
         # Handle different possible request formats from Vapi
         tool_call_id = None
         property_name = None
-        check_date_input = None
+        check_in_date_input = None
+        check_out_date_input = None
         
         # Try multiple possible formats
         if "toolCall" in request_data:
@@ -81,13 +82,15 @@ async def vapi_webhook(request: Request):
             if isinstance(function_args, str):
                 function_args = json_module.loads(function_args)
             property_name = function_args["property_name"]
-            check_date_input = function_args["check_date"]
+            check_in_date_input = function_args["check_in_date"]
+            check_out_date_input = function_args["check_out_date"]
             logger.info(f"Using toolCall format - ID: {tool_call_id}")
         elif "toolCallId" in request_data:
             # Our expected format (fallback)
             tool_call_id = request_data["toolCallId"]
             property_name = request_data["parameters"]["property_name"]
-            check_date_input = request_data["parameters"]["check_date"]
+            check_in_date_input = request_data["parameters"]["check_in_date"]
+            check_out_date_input = request_data["parameters"]["check_out_date"]
             logger.info(f"Using toolCallId format - ID: {tool_call_id}")
         elif "message" in request_data and "toolCallList" in request_data["message"]:
             # Alternative Vapi format - this is the actual format Vapi is sending
@@ -96,7 +99,8 @@ async def vapi_webhook(request: Request):
             function_args = tool_call["function"]["arguments"]
             # Arguments is already a dict, not a JSON string
             property_name = function_args["property_name"]
-            check_date_input = function_args["check_date"]
+            check_in_date_input = function_args["check_in_date"]
+            check_out_date_input = function_args["check_out_date"]
             logger.info(f"Using message.toolCallList format - ID: {tool_call_id}")
         else:
             # Try to extract from any format - be very flexible
@@ -120,12 +124,12 @@ async def vapi_webhook(request: Request):
                             return result
                 return None, ""
             
-            # Try to find property_name and check_date anywhere
+            # Try to find property_name, check_in_date, and check_out_date anywhere
             def find_parameters(data, path=""):
                 params = {}
                 if isinstance(data, dict):
                     for key, value in data.items():
-                        if key in ["property_name", "check_date"]:
+                        if key in ["property_name", "check_in_date", "check_out_date"]:
                             params[key] = value
                         elif isinstance(value, (dict, list)):
                             sub_params = find_parameters(value, path + f".{key}")
@@ -140,31 +144,34 @@ async def vapi_webhook(request: Request):
             tool_call_id, id_path = find_tool_call_id(request_data)
             params = find_parameters(request_data)
             
-            if tool_call_id and "property_name" in params and "check_date" in params:
+            if tool_call_id and "property_name" in params and "check_in_date" in params and "check_out_date" in params:
                 property_name = params["property_name"]
-                check_date_input = params["check_date"]
+                check_in_date_input = params["check_in_date"]
+                check_out_date_input = params["check_out_date"]
                 logger.info(f"Flexible extraction successful - ID: {tool_call_id} at {id_path}")
             else:
                 logger.error(f"Flexible extraction failed - toolCallId: {tool_call_id}, params: {params}")
                 return {"error": "Unknown request format - could not extract required fields"}
         
-        if not tool_call_id or not property_name or not check_date_input:
-            logger.error(f"Missing required fields - toolCallId: {tool_call_id}, property_name: {property_name}, check_date: {check_date_input}")
+        if not tool_call_id or not property_name or not check_in_date_input or not check_out_date_input:
+            logger.error(f"Missing required fields - toolCallId: {tool_call_id}, property_name: {property_name}, check_in_date: {check_in_date_input}, check_out_date: {check_out_date_input}")
             return {"error": "Missing required fields"}
         
-        # Parse the date (handles natural language)
+        # Parse the dates (handles natural language)
         try:
-            check_date = date_parser_service.parse_date(check_date_input)
-            logger.info(f"Parsed date '{check_date_input}' to '{check_date}'")
+            check_in_date = date_parser_service.parse_date(check_in_date_input)
+            check_out_date = date_parser_service.parse_date(check_out_date_input)
+            logger.info(f"Parsed dates '{check_in_date_input}' to '{check_in_date}' and '{check_out_date_input}' to '{check_out_date}'")
         except Exception as e:
             logger.error(f"Date parsing error: {e}")
-            return error_handler.invalid_date_response(tool_call_id, check_date_input)
+            return error_handler.invalid_date_response(tool_call_id, f"{check_in_date_input} - {check_out_date_input}")
         
         # Perform fuzzy search
         try:
             search_results = property_search_service.search_properties(
                 property_name=property_name,
-                check_date=check_date
+                check_in_date=check_in_date,
+                check_out_date=check_out_date
             )
             logger.info(f"Search completed: {search_results['total_found']} properties found")
             
@@ -246,21 +253,24 @@ async def vapi_webhook_simple(request: VapiWebhookRequest):
         # Extract parameters
         tool_call_id = request.toolCallId
         property_name = request.parameters.property_name
-        check_date_input = request.parameters.check_date
+        check_in_date_input = request.parameters.check_in_date
+        check_out_date_input = request.parameters.check_out_date
         
-        # Parse the date (handles natural language)
+        # Parse the dates (handles natural language)
         try:
-            check_date = date_parser_service.parse_date(check_date_input)
-            logger.info(f"Parsed date '{check_date_input}' to '{check_date}'")
+            check_in_date = date_parser_service.parse_date(check_in_date_input)
+            check_out_date = date_parser_service.parse_date(check_out_date_input)
+            logger.info(f"Parsed dates '{check_in_date_input}' to '{check_in_date}' and '{check_out_date_input}' to '{check_out_date}'")
         except Exception as e:
             logger.error(f"Date parsing error: {e}")
-            return {"error": f"Invalid date format: {check_date_input}"}
+            return {"error": f"Invalid date format: {check_in_date_input} - {check_out_date_input}"}
         
         # Perform fuzzy search
         try:
             search_results = property_search_service.search_properties(
                 property_name=property_name,
-                check_date=check_date
+                check_in_date=check_in_date,
+                check_out_date=check_out_date
             )
             logger.info(f"Search completed: {search_results['total_found']} properties found")
             
@@ -269,7 +279,8 @@ async def vapi_webhook_simple(request: VapiWebhookRequest):
                 "toolCallId": tool_call_id,
                 "found": search_results['found'],
                 "search_term": search_results['search_term'],
-                "check_date": search_results['check_date'],
+                "check_in_date": search_results['check_in_date'],
+                "check_out_date": search_results['check_out_date'],
                 "total_found": search_results['total_found'],
                 "available_count": search_results['available_count'],
                 "properties": search_results['properties'],
@@ -288,21 +299,24 @@ async def vapi_webhook_simple(request: VapiWebhookRequest):
 @app.get("/api/v1/properties/search")
 async def search_properties(
     property_name: str,
-    check_date: str,
+    check_in_date: str,
+    check_out_date: str,
     limit: int = 10
 ):
     """
     Direct search endpoint for testing
     """
     try:
-        # Parse date
-        parsed_date = date_parser_service.parse_date(check_date)
-        logger.info(f"Date parsed: '{check_date}' -> '{parsed_date}'")
+        # Parse dates
+        parsed_check_in_date = date_parser_service.parse_date(check_in_date)
+        parsed_check_out_date = date_parser_service.parse_date(check_out_date)
+        logger.info(f"Dates parsed: '{check_in_date}' -> '{parsed_check_in_date}' and '{check_out_date}' -> '{parsed_check_out_date}'")
         
         # Search properties
         results = property_search_service.search_properties(
             property_name=property_name,
-            check_date=parsed_date
+            check_in_date=parsed_check_in_date,
+            check_out_date=parsed_check_out_date
         )
         
         return results
