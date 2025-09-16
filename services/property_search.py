@@ -14,7 +14,7 @@ class PropertySearchService:
     
     def __init__(self, csv_file_path: str = "Lohono Stays Mastersheet _ Dummy data for Voice bot Testing.xlsx - Availablity & Pricing (1).csv"):
         self.csv_file_path = csv_file_path
-        self.similarity_threshold = 70  # 70% similarity threshold as per PRD
+        self.similarity_threshold = 90  # 90% similarity threshold for better precision
         self._data_cache = None
         self._load_data()
     
@@ -67,7 +67,9 @@ class PropertySearchService:
                 return self._no_properties_found_response(property_name, check_in_date, check_out_date)
             
             # Perform fuzzy search
+            logger.info(f"Starting fuzzy search for '{property_name}' against {len(all_property_names)} properties")
             fuzzy_matches = self._fuzzy_search_properties(property_name, all_property_names)
+            logger.info(f"Fuzzy search returned {len(fuzzy_matches)} matches")
             
             if not fuzzy_matches:
                 return self._no_properties_found_response(property_name, check_in_date, check_out_date)
@@ -86,9 +88,10 @@ class PropertySearchService:
     
     def _fuzzy_search_properties(self, search_term: str, all_properties: List[str]) -> List[str]:
         """
-        Perform fuzzy search on property names
+        Perform fuzzy search on property names with improved matching for property variations
         """
         search_term_lower = search_term.lower().strip()
+        search_words = set(search_term_lower.split())
         
         # First, try exact partial matches (case insensitive)
         direct_matches = [
@@ -101,21 +104,111 @@ class PropertySearchService:
             logger.info(f"Found {len(direct_matches)} direct matches for '{search_term}'")
             return direct_matches
         
-        # If no direct matches, use fuzzy matching
-        matches = process.extract(
+        # Enhanced matching: check for word-based matches with property variations
+        word_matches = []
+        for prop in all_properties:
+            prop_lower = prop.lower()
+            prop_words = set(prop_lower.replace('-', ' ').split())
+            
+            # Check if search words are present in property name (ignoring order)
+            # Require at least 80% of search words to match for better precision
+            intersection_ratio = len(search_words.intersection(prop_words)) / len(search_words)
+            
+            # Additional check: ensure the main property identifier (non-generic words) match
+            # Filter out common generic words like 'villa', 'house', etc.
+            # Only exclude words that are standalone, not when they're part of compound words
+            generic_words = {'villa', 'house', 'cottage', 'estate', 'manor', 'palace', 'resort'}
+            search_specific = {word for word in search_words if word not in generic_words}
+            prop_specific = {word for word in prop_words if word not in generic_words}
+            
+            # If we have specific words in search, require at least one to match
+            if search_specific:
+                specific_match = len(search_specific.intersection(prop_specific)) > 0
+                if search_words.issubset(prop_words) or (intersection_ratio >= 0.8 and specific_match):
+                    word_matches.append(prop)
+            else:
+                # If only generic words, use stricter matching
+                if search_words.issubset(prop_words):
+                    word_matches.append(prop)
+        
+        if word_matches:
+            logger.info(f"Found {len(word_matches)} word-based matches for '{search_term}'")
+            return word_matches
+        
+        # Enhanced fuzzy matching with multiple scoring methods
+        fuzzy_matches = []
+        
+        # Method 1: Standard partial ratio
+        matches_partial = process.extract(
             search_term_lower,
             [prop.lower() for prop in all_properties],
             scorer=fuzz.partial_ratio,
-            limit=20  # Limit to top 20 matches
+            limit=20
         )
         
-        # Filter by similarity threshold
-        fuzzy_matches = [
-            all_properties[i] for i, (match, score, _) in enumerate(matches)
-            if score >= self.similarity_threshold
-        ]
+        # Method 2: Token sort ratio (handles word order differences)
+        matches_token_sort = process.extract(
+            search_term_lower,
+            [prop.lower() for prop in all_properties],
+            scorer=fuzz.token_sort_ratio,
+            limit=20
+        )
+        
+        # Method 3: Token set ratio (handles word variations)
+        matches_token_set = process.extract(
+            search_term_lower,
+            [prop.lower() for prop in all_properties],
+            scorer=fuzz.token_set_ratio,
+            limit=20
+        )
+        
+        # Combine and score all matches
+        all_matches = {}
+        for matches, weight in [(matches_partial, 1.0), (matches_token_sort, 1.2), (matches_token_set, 1.1)]:
+            for i, (match, score, _) in enumerate(matches):
+                prop_name = all_properties[i]
+                weighted_score = score * weight
+                if prop_name not in all_matches or all_matches[prop_name] < weighted_score:
+                    all_matches[prop_name] = weighted_score
+        
+        # Filter by similarity threshold and sort by score
+        # Apply additional filtering for fuzzy matches to prevent false positives
+        filtered_matches = []
+        for prop, score in sorted(all_matches.items(), key=lambda x: x[1], reverse=True):
+            if score >= self.similarity_threshold:
+                # Additional check: ensure at least one non-generic word matches
+                prop_lower = prop.lower()
+                prop_words = set(prop_lower.replace('-', ' ').split())
+                # Only exclude words that are standalone, not when they're part of compound words
+                generic_words = {'villa', 'house', 'cottage', 'estate', 'manor', 'palace', 'resort'}
+                search_specific = {word for word in search_words if word not in generic_words}
+                prop_specific = {word for word in prop_words if word not in generic_words}
+                
+                # Only include if there's a meaningful match beyond generic words
+                # For non-existent properties, be very strict
+                if search_specific:
+                    # Require at least one specific word to match exactly (case-insensitive)
+                    search_specific_lower = {word.lower() for word in search_specific}
+                    prop_specific_lower = {word.lower() for word in prop_specific}
+                    exact_matches = search_specific_lower.intersection(prop_specific_lower)
+                    
+                    # Debug logging for first few properties
+                    if len(filtered_matches) < 3:
+                        logger.info(f"Checking '{prop}': search_specific={search_specific_lower}, prop_specific={prop_specific_lower}, exact_matches={exact_matches}")
+                    
+                    if exact_matches:
+                        # At least one specific word matches exactly
+                        filtered_matches.append(prop)
+                else:
+                    # If only generic words, require very high similarity (95%+)
+                    if score >= 95:
+                        filtered_matches.append(prop)
+        
+        fuzzy_matches = filtered_matches
         
         logger.info(f"Found {len(fuzzy_matches)} fuzzy matches for '{search_term}'")
+        if len(fuzzy_matches) > 0:
+            logger.info(f"Sample fuzzy matches: {fuzzy_matches[:5]}")
         return fuzzy_matches
 
     def _validate_date_range(self, check_in_date: str, check_out_date: str) -> bool:
@@ -249,18 +342,20 @@ class PropertySearchService:
                     "per_night_price": None
                 })
         
-        # Calculate price range
+        # Calculate price range - only include if there are multiple distinct prices
         price_range = None
         if prices:
-            price_range = {
-                "min": min(prices),
-                "max": max(prices)
-            }
+            unique_prices = list(set(prices))
+            if len(unique_prices) > 1:
+                price_range = {
+                    "min": min(prices),
+                    "max": max(prices)
+                }
         
         # Generate summary message
         summary = self._generate_summary_range(
             search_term, check_in_date, check_out_date, len(matched_properties), 
-            available_count, price_range
+            available_count, price_range, prices
         )
         
         return {
@@ -313,7 +408,8 @@ class PropertySearchService:
         check_out_date: str,
         total_found: int, 
         available_count: int, 
-        price_range: Optional[Dict[str, int]]
+        price_range: Optional[Dict[str, int]],
+        prices: List[int] = None
     ) -> str:
         """
         Generate a human-readable summary message for date range
@@ -336,6 +432,9 @@ class PropertySearchService:
         
         if price_range:
             price_text = f"Per-night prices range from ₹{price_range['min']:,} to ₹{price_range['max']:,}."
+        elif prices and len(prices) > 0:
+            # Single price available
+            price_text = f"Per-night price is ₹{prices[0]:,}."
         else:
             price_text = "Pricing information available."
         
