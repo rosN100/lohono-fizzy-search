@@ -107,6 +107,7 @@ class PropertySearchService:
         # Enhanced matching: check for word-based matches with property variations
         word_matches = []
         for prop in all_properties:
+            # Continue with normal processing
             prop_lower = prop.lower()
             prop_words = set(prop_lower.replace('-', ' ').split())
             
@@ -121,9 +122,26 @@ class PropertySearchService:
             search_specific = {word for word in search_words if word not in generic_words}
             prop_specific = {word for word in prop_words if word not in generic_words}
             
-            # If we have specific words in search, require at least one to match
+            # If we have specific words in search, require at least one to match (exact or fuzzy)
             if search_specific:
-                specific_match = len(search_specific.intersection(prop_specific)) > 0
+                exact_matches = search_specific.intersection(prop_specific)
+                
+                # Check for fuzzy matches of specific words
+                fuzzy_word_matches = False
+                for search_word in search_specific:
+                    for prop_word in prop_specific:
+                        if fuzz.ratio(search_word, prop_word) >= 85:  # 85% similarity threshold
+                            fuzzy_word_matches = True
+                            break
+                    if fuzzy_word_matches:
+                        break
+                
+                specific_match = len(exact_matches) > 0 or fuzzy_word_matches
+                
+                # Log for debugging
+                if len(word_matches) < 3 or fuzzy_word_matches:
+                    logger.info(f"Checking '{prop}': search_specific={search_specific}, prop_specific={prop_specific}, exact_matches={exact_matches}, fuzzy_word_matches={fuzzy_word_matches}")
+                
                 if search_words.issubset(prop_words) or (intersection_ratio >= 0.8 and specific_match):
                     word_matches.append(prop)
             else:
@@ -165,11 +183,13 @@ class PropertySearchService:
         # Combine and score all matches
         all_matches = {}
         for matches, weight in [(matches_partial, 1.0), (matches_token_sort, 1.2), (matches_token_set, 1.1)]:
-            for i, (match, score, _) in enumerate(matches):
-                prop_name = all_properties[i]
+            for match, score, idx in matches:
+                prop_name = all_properties[idx]
                 weighted_score = score * weight
                 if prop_name not in all_matches or all_matches[prop_name] < weighted_score:
                     all_matches[prop_name] = weighted_score
+                    
+
         
         # Filter by similarity threshold and sort by score
         # Apply additional filtering for fuzzy matches to prevent false positives
@@ -187,17 +207,30 @@ class PropertySearchService:
                 # Only include if there's a meaningful match beyond generic words
                 # For non-existent properties, be very strict
                 if search_specific:
-                    # Require at least one specific word to match exactly (case-insensitive)
+                    # Check for exact matches first
                     search_specific_lower = {word.lower() for word in search_specific}
                     prop_specific_lower = {word.lower() for word in prop_specific}
                     exact_matches = search_specific_lower.intersection(prop_specific_lower)
                     
-                    # Debug logging for first few properties
-                    if len(filtered_matches) < 3:
-                        logger.info(f"Checking '{prop}': search_specific={search_specific_lower}, prop_specific={prop_specific_lower}, exact_matches={exact_matches}")
+                    # If no exact matches, check for fuzzy matches on individual words
+                    fuzzy_word_matches = False
+                    if not exact_matches:
+                        for search_word in search_specific_lower:
+                            for prop_word in prop_specific_lower:
+                                # Use fuzzy matching for individual words (85% threshold for spelling variations)
+                                word_similarity = fuzz.ratio(search_word, prop_word)
+                                if word_similarity >= 85:
+                                    fuzzy_word_matches = True
+                                    break
+                            if fuzzy_word_matches:
+                                break
                     
-                    if exact_matches:
-                        # At least one specific word matches exactly
+                    # Debug logging for first few properties and when fuzzy matches are found
+                    if len(filtered_matches) < 3 or fuzzy_word_matches:
+                        logger.info(f"Checking '{prop}': search_specific={search_specific_lower}, prop_specific={prop_specific_lower}, exact_matches={exact_matches}, fuzzy_word_matches={fuzzy_word_matches}")
+                    
+                    if exact_matches or fuzzy_word_matches:
+                        # At least one specific word matches exactly or with high similarity
                         filtered_matches.append(prop)
                 else:
                     # If only generic words, require very high similarity (95%+)
@@ -207,8 +240,7 @@ class PropertySearchService:
         fuzzy_matches = filtered_matches
         
         logger.info(f"Found {len(fuzzy_matches)} fuzzy matches for '{search_term}'")
-        if len(fuzzy_matches) > 0:
-            logger.info(f"Sample fuzzy matches: {fuzzy_matches[:5]}")
+
         return fuzzy_matches
 
     def _validate_date_range(self, check_in_date: str, check_out_date: str) -> bool:
